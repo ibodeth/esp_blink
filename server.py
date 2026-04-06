@@ -79,7 +79,9 @@ def process_audio():
     out = bytearray()
     if not user_text:
         err = "Sinyal alınamadı."; out += pkt_audio(err, text_to_pcm(err)) + struct.pack("<B", 0xFF)
-        return Response(bytes(out), mimetype="application/octet-stream")
+        data = bytes(out)
+        return Response(data, mimetype="application/octet-stream",
+                        headers={"Content-Length": str(len(data))})
 
     # STT Packet
     sb = user_text.encode("utf-8"); out += struct.pack("<BH", 0x01, len(sb)) + sb
@@ -121,7 +123,9 @@ def process_audio():
             out += struct.pack("<BB", 0x05, 1) + struct.pack("<H", len(tb)) + tb
 
     out += struct.pack("<B", 0xFF)
-    return Response(bytes(out), mimetype="application/octet-stream")
+    data = bytes(out)
+    return Response(data, mimetype="application/octet-stream",
+                    headers={"Content-Length": str(len(data))})
 
 @app.route("/tts", methods=["GET"])
 def get_tts():

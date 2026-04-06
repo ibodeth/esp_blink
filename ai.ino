@@ -286,9 +286,36 @@ bool downloadFull(const String& url, uint8_t** outBuf, size_t& outLen) {
   HTTPClient ht;
   ht.begin(cl, url);
   if (ht.GET() == 200) {
-    outLen = ht.getSize();
-    *outBuf = (uint8_t*)ps_malloc(outLen);
-    if (*outBuf) { ht.getStream().readBytes(*outBuf, outLen); ht.end(); return true; }
+    int clen = ht.getSize();
+    if (clen > 0) {
+      *outBuf = (uint8_t*)ps_malloc(clen);
+      if (*outBuf) { ht.getStream().readBytes(*outBuf, clen); outLen = clen; ht.end(); return true; }
+    } else {
+      // Content-Length bilinmiyor: stream bitene kadar oku
+      const size_t STEP = 4096;
+      size_t capacity = STEP, used = 0;
+      uint8_t* tmp = (uint8_t*)ps_malloc(capacity);
+      if (tmp) {
+        WiFiClient* stream = ht.getStreamPtr();
+        unsigned long t0 = millis();
+        while (millis() - t0 < 20000) {
+          if (stream->available()) {
+            if (used + STEP > capacity) {
+              uint8_t* nb = (uint8_t*)ps_malloc(capacity + STEP);
+              if (!nb) break;
+              memcpy(nb, tmp, used);
+              free(tmp); tmp = nb;
+              capacity += STEP;
+            }
+            int r = stream->read(tmp + used, STEP);
+            if (r > 0) { used += r; t0 = millis(); }
+          } else if (!stream->connected()) break;
+          else delay(1);
+        }
+        if (used > 0) { *outBuf = tmp; outLen = used; ht.end(); return true; }
+        free(tmp);
+      }
+    }
   }
   ht.end(); return false;
 }
@@ -319,13 +346,43 @@ void doRecordAndProcess() {
 
   if (code == 200) {
     int clen = ht.getSize();
-    gBuf = (uint8_t*)ps_malloc(clen);
-    if (gBuf) {
-      gBufLen = clen;
-      ht.getStream().readBytes(gBuf, clen);
-      gBufPos = 0; 
-      parseResponseBuffer();
-      free(gBuf); gBuf = nullptr;
+    if (clen > 0) {
+      gBuf = (uint8_t*)ps_malloc(clen);
+      if (gBuf) {
+        gBufLen = clen;
+        ht.getStream().readBytes(gBuf, clen);
+        gBufPos = 0;
+        parseResponseBuffer();
+        free(gBuf); gBuf = nullptr;
+      }
+    } else {
+      // Content-Length bilinmiyor (chunked): stream bitene kadar oku
+      const size_t STEP = 4096;
+      size_t capacity = STEP, used = 0;
+      gBuf = (uint8_t*)ps_malloc(capacity);
+      if (gBuf) {
+        WiFiClient* stream = ht.getStreamPtr();
+        unsigned long t0 = millis();
+        while (millis() - t0 < 30000) {
+          if (stream->available()) {
+            if (used + STEP > capacity) {
+              uint8_t* nb = (uint8_t*)ps_malloc(capacity + STEP);
+              if (!nb) break;
+              memcpy(nb, gBuf, used);
+              free(gBuf); gBuf = nb;
+              capacity += STEP;
+            }
+            int r = stream->read(gBuf + used, STEP);
+            if (r > 0) { used += r; t0 = millis(); }
+          } else if (!stream->connected()) break;
+          else delay(1);
+        }
+        if (used > 0) {
+          gBufLen = used; gBufPos = 0;
+          parseResponseBuffer();
+        }
+        free(gBuf); gBuf = nullptr;
+      }
     }
   }
   ht.end();
