@@ -5,7 +5,7 @@ import io, wave, struct, json, os, time, subprocess, tempfile, sqlite3, logging
 from pathlib import Path
 from flask import Flask, request, Response
 import speech_recognition as sr
-import google.generativeai as genai
+from google import genai
 from gtts import gTTS
 from pydub import AudioSegment
 import requests
@@ -15,7 +15,8 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("blink")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-model = genai.GenerativeModel("gemini-3.1-flash-lite-preview")
+GEMINI_MODEL = "gemini-2.0-flash-lite"
+client = genai.Client(api_key=GEMINI_API_KEY)
 AudioSegment.converter = "/usr/bin/ffmpeg"
 
 app = Flask(__name__)
@@ -88,7 +89,7 @@ def process_audio():
 
     # 2. Gemini Multi-Intent (Sequential Sorting)
     try:
-        resp = model.generate_content(intent_prompt(user_text, time.strftime("%H:%M"), "Konya"))
+        resp = client.models.generate_content(model=GEMINI_MODEL, contents=intent_prompt(user_text, time.strftime("%H:%M"), "Konya"))
         raw_queue = json.loads(resp.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()).get("queue", [])
     except: raw_queue = [{"type": "chat", "response": "Veri hatası."}]
 
@@ -114,7 +115,7 @@ def process_audio():
 
         elif itype == "weather":
             forecast = get_weather_analysis("Konya")
-            analysis = model.generate_content(f"Teknik hava verileri: {forecast}. '{tgt}' için Matrix tarzında 1 kısa cümle özet ve giysi tavsiyesi ver.").text.strip()
+            analysis = client.models.generate_content(model=GEMINI_MODEL, contents=f"Teknik hava verileri: {forecast}. '{tgt}' için Matrix tarzında 1 kısa cümle özet ve giysi tavsiyesi ver.").text.strip()
             out += pkt_audio(analysis, text_to_pcm(analysis))
 
         elif itype == "music":
