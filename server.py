@@ -28,12 +28,12 @@ def get_weather_analysis(city):
         r = requests.get(url, timeout=10).json()
         daily = r.get("daily", {})
         return "\n".join([f"{daily['time'][i]}: {daily['temperature_2m_max'][i]}°C/{daily['temperature_2m_min'][i]}°C, Kod:{daily['weathercode'][i]}" for i in range(len(daily.get("time", [])))])
-    except: return "Veri akışı kesildi."
+    except: return "Data stream interrupted."
 
 # ── YARDIMCILAR ─────────────────────────────────────────────────────────────
 def text_to_pcm(text, vol_db=22):
     try:
-        tts = gTTS(text=text, lang="tr", slow=False)
+        tts = gTTS(text=text, lang="en", slow=False)
         mp3 = io.BytesIO(); tts.write_to_fp(mp3); mp3.seek(0)
         seg = AudioSegment.from_file(mp3, format="mp3") 
         seg = seg.set_frame_rate(16000).set_channels(1).set_sample_width(2)
@@ -47,22 +47,22 @@ def pkt_audio(text, pcm):
 
 # ── MATRIX PROMPT ───────────────────────────────────────────────────────────
 def intent_prompt(user_text, now, city):
-    return f"""[SYSTEM] Adın Blink. Matrix sisteminin bir parçasısın. 
-Karakterin: Ciddi, teknolojik, Jarvis gibi ama Matrix estetiğinde.
-Sen bir Agentsın: Tüm niyetleri sırayla kuyruğa diz.
-[ZAMAN] {now} | [KONUM] {city} | [GİRDİ] "{user_text}"
+    return f"""[SYSTEM] Your name is Blink. You are part of the Matrix system. 
+Character: Serious, technological, Jarvis-like but with Matrix aesthetics.
+You are an Agent: Queue all intents sequentially.
+[TIME] {now} | [LOCATION] {city} | [INPUT] "{user_text}"
 
-[KURALLAR]
-1. IŞIK: MUTLAKA hex kodu döndür (#00FF41 en uygun yeşildir).
-2. MÜZİK: Her zaman kuyruğun en sonuna koy.
-3. HAVA: 'target' kısmına istenen tarihi yaz.
-4. CEVAPLAR: Teknik, net ve akıllıca olsun.
+[RULES]
+1. LIGHT: MUST return a hex code (#00FF41 is the most appropriate green).
+2. MUSIC: Always place at the very end of the queue.
+3. WEATHER: Write the requested date in the 'target' field.
+4. RESPONSES: Keep them technical, clean, and intelligent.
 
 [OUTPUT FORMAT]
 {{"queue": [
-  {{"type": "ambient_light", "target": "#HEX", "response": "Sistem rengi güncellendi."}},
-  {{"type": "chat", "response": "Analiz tamamlandı..."}},
-  {{"type": "music", "target": "Megadeth", "response": "Ses dalgaları başlatılıyor."}}
+  {{"type": "ambient_light", "target": "#HEX", "response": "System color updated."}},
+  {{"type": "chat", "response": "Analysis complete..."}},
+  {{"type": "music", "target": "Megadeth", "response": "Audio waves initiated."}}
 ]}}
 """
 
@@ -74,12 +74,12 @@ def process_audio():
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(request.data)
     wav.seek(0)
     rec = sr.Recognizer()
-    try: user_text = rec.recognize_google(rec.record(src=sr.AudioFile(wav)), language="tr-TR")
+    try: user_text = rec.recognize_google(rec.record(src=sr.AudioFile(wav)), language="en-US")
     except: user_text = ""
 
     out = bytearray()
     if not user_text:
-        err = "Sinyal alınamadı."; out += pkt_audio(err, text_to_pcm(err)) + struct.pack("<B", 0xFF)
+        err = "Signal not received."; out += pkt_audio(err, text_to_pcm(err)) + struct.pack("<B", 0xFF)
         data = bytes(out)
         return Response(data, mimetype="application/octet-stream",
                         headers={"Content-Length": str(len(data))})
@@ -91,7 +91,7 @@ def process_audio():
     try:
         resp = client.models.generate_content(model=GEMINI_MODEL, contents=intent_prompt(user_text, time.strftime("%H:%M"), "Konya"))
         raw_queue = json.loads(resp.text.strip().lstrip("```json").lstrip("```").rstrip("```").strip()).get("queue", [])
-    except: raw_queue = [{"type": "chat", "response": "Veri hatası."}]
+    except: raw_queue = [{"type": "chat", "response": "Data error."}]
 
     # Priority Sort: Light(1) > Chat(2) > Weather(3) > Reminder(4) > Music(5)
     order = {"ambient_light": 1, "chat": 2, "weather": 3, "reminder": 4, "music": 5, "playlist": 5}
@@ -115,7 +115,7 @@ def process_audio():
 
         elif itype == "weather":
             forecast = get_weather_analysis("Konya")
-            analysis = client.models.generate_content(model=GEMINI_MODEL, contents=f"Teknik hava verileri: {forecast}. '{tgt}' için Matrix tarzında 1 kısa cümle özet ve giysi tavsiyesi ver.").text.strip()
+            analysis = client.models.generate_content(model=GEMINI_MODEL, contents=f"Technical weather data: {forecast}. Give 1 short sentence summary and clothing advice in Matrix style for '{tgt}'.").text.strip()
             out += pkt_audio(analysis, text_to_pcm(analysis))
 
         elif itype == "music":
@@ -131,7 +131,7 @@ def process_audio():
 @app.route("/tts", methods=["GET"])
 def get_tts():
     text = request.args.get("q", "")
-    return Response(text_to_pcm(f"Protokol uyarısı. {text}", vol_db=15), mimetype="application/octet-stream")
+    return Response(text_to_pcm(f"Protocol alert. {text}", vol_db=15), mimetype="application/octet-stream")
 
 @app.route("/music", methods=["GET"])
 def serve_music():
@@ -140,7 +140,7 @@ def serve_music():
         cmd = ["yt-dlp", "-x", "--audio-format", "best", "--force-ipv4", "-o", os.path.join(tmp, "a.%(ext)s"), f"ytsearch1:{query}"]
         subprocess.run(cmd, capture_output=True)
         found = [os.path.join(tmp, f) for f in os.listdir(tmp) if f.endswith((".mp3", ".webm", ".m4a"))]
-        if not found: return "Yok", 404
+        if not found: return "Not found", 404
         seg = AudioSegment.from_file(found[0]).set_frame_rate(16000).set_channels(1).set_sample_width(2)
         pcm = bytes((seg[:240000]-6).raw_data)
         return Response(struct.pack("<I", len(pcm)) + pcm, mimetype="application/octet-stream")
