@@ -1,16 +1,29 @@
-# esp_blink 🤖🔌
+# esp_blink
 
-> **Note:** This is a lightweight IoT/ESP32 project to interface with the Blink voice assistant framework.
+An IoT firmware client and backend server to interface physical microphone input and LED displays with the Blink voice assistant.
 
-This repository contains the ESP32 client codebase and Flask server configurations for deploying a headless/IoT physical instance of the Blink AI Voice Assistant.
+## How it Works
+The ESP32 microcontroller connects to local Wi-Fi, captures microphone input over I2S, streams the raw audio binary to the companion Flask server, and drives a WS2812B LED status indicator. The Flask backend server processes the incoming binary stream, communicates with the Gemini API to get responses, and returns Text-to-Speech audio and state packets to the ESP32.
 
----
+## Tech Stack
+- **Languages/Frameworks:** C++, Python, Flask
+- **Services/Libraries:** Arduino IDE (FastLED, WiFi, I2S libraries), Google Gemini API, Microsoft Edge TTS
+- **Infrastructure:** ESP32, WS2812B Addressable LED, Flask Backend Server
 
-## Architecture Overview
-* **`ai.ino` (ESP32 Client):** Connects to Wi-Fi, captures I2S microphone input stream, sends audio binaries to Flask backend, and drives custom WS2812B ambient light strips based on server response packets.
-* **`server.py` (Flask Backend):** Receives binary PCM audio packages from the client, runs Speech-To-Text (STT) inference, orchestrates task pipelines via Gemini LLM models, and returns compiled protocol buffers with TTS audio.
-
----
+## Local Setup
+1. Upload the `ai.ino` firmware file to your ESP32 board using the Arduino IDE.
+2. Clone the repository and navigate to the directory:
+   ```bash
+   git clone https://github.com/ibodeth/esp_blink.git
+   cd esp_blink
+   ```
+3. Set up a virtual environment and start the Flask backend server:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   python server.py
+   ```
 
 ## License
-This project is licensed under the MIT License.
+MIT
